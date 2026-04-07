@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ecos Eternos: Angeles 💌</title>
+    <style>
+        body, html { margin: 0; overflow: hidden; background: #050505; font-family: 'Georgia', serif; touch-action: none; }
+        #ui-layer { position: absolute; width: 100%; height: 100%; z-index: 10; pointer-events: none; color: white; }
+        
+        #intro-screen { 
+            position: absolute; width: 100%; height: 100%; background: radial-gradient(circle, #2a0a2e, #000);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            text-align: center; pointer-events: auto; z-index: 20;
+        }
+
+        #hud { position: absolute; top: 20px; width: 100%; text-align: center; opacity: 0; transition: 1s; }
+        #objective { font-size: 1.2em; color: #ff3366; text-shadow: 0 0 10px #fff; font-weight: bold; }
+        #guide-msg { font-size: 0.8em; color: #aaa; margin-top: 5px; }
+
+        #controls { position: absolute; bottom: 40px; width: 100%; display: flex; justify-content: space-around; align-items: center; pointer-events: auto; opacity: 0; }
+        #joystick-base { width: 100px; height: 100px; background: rgba(255,255,255,0.05); border: 2px solid #ff3366; border-radius: 50%; position: relative; }
+        #joystick-stick { width: 40px; height: 40px; background: #ff3366; border-radius: 50%; position: absolute; top: 30px; left: 30px; box-shadow: 0 0 15px #ff3366; }
+        
+        #action-btn { width: 70px; height: 70px; border-radius: 50%; background: white; border: none; font-weight: bold; box-shadow: 0 0 20px #fff; }
+        
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div id="intro-screen">
+            <h1 style="letter-spacing: 5px;">ECOS ETERNOS</h1>
+            <p>Un viaje por el alma de Angeles</p>
+            <button id="start-btn" style="padding: 15px 40px; background: #ff3366; color: white; border: none; border-radius: 30px; font-weight: bold; cursor: pointer;">INICIAR AVENTURA</button>
+        </div>
+
+        <div id="hud">
+            <div id="objective">Diamantes de Devoción: 0 / 5</div>
+            <div id="guide-msg">Sigue la estela de luz para encontrar el siguiente...</div>
+        </div>
+
+        <div id="controls">
+            <div id="joystick-base"><div id="joystick-stick"></div></div>
+            <button id="action-btn">PULSO</button>
+        </div>
+    </div>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        let scene, camera, renderer, heart, flames = [], score = 0;
+        let moveX = 0, moveY = 0;
+        let guideLine;
+        const speed = 0.25;
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x0a0510, 0.03);
+            
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
+
+            // Estrellas de referencia
+            const starGeo = new THREE.BufferGeometry();
+            const starCoords = [];
+            for(let i=0; i<1000; i++) {
+                starCoords.push((Math.random()-0.5)*200, (Math.random()-0.5)*200, (Math.random()-0.5)*200);
+            }
+            starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starCoords, 3));
+            const starMat = new THREE.PointsMaterial({ color: 0x444444, size: 0.1 });
+            scene.add(new THREE.Points(starGeo, starMat));
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+            const pLight = new THREE.PointLight(0xff3366, 30, 100);
+            pLight.position.set(0, 5, 15);
+            scene.add(pLight);
+
+            // --- CORRECCIÓN PERSONAJE: CORAZÓN PERFECCIONADO ---
+            const heartShape = new THREE.Shape();
+            // Definición manual de un corazón hermoso y simétrico
+            heartShape.moveTo( 0, 10 );
+            heartShape.bezierCurveTo( 10, 20, 20, 10, 20, 0 );
+            heartShape.bezierCurveTo( 20, -10, 10, -18, 0, -28 );
+            heartShape.bezierCurveTo( -10, -18, -20, -10, -20, 0 );
+            heartShape.bezierCurveTo( -20, 10, -10, 20, 0, 10 );
+
+            const extrudeSettings = { depth: 4, bevelEnabled: true, bevelSegments: 3, steps: 2, bevelSize: 1, bevelThickness: 1 };
+            const heartGeo = new THREE.ExtrudeGeometry(heartShape, extrudeSettings);
+            const heartMat = new THREE.MeshPhongMaterial({ color: 0xff1144, emissive: 0x880022, shininess: 80 });
+            heart = new THREE.Mesh(heartGeo, heartMat);
+            
+            // Ajustar escala y rotación del nuevo corazón
+            heart.scale.set(0.04, 0.04, 0.04);
+            heart.rotation.x = Math.PI; // Corregir orientación
+            heart.rotation.z = Math.PI; // Corregir orientación
+            scene.add(heart);
+
+            // Guía de luz
+            const lineMat = new THREE.LineBasicMaterial({ color: 0xffcc00, transparent: true, opacity: 0.4 });
+            const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+            guideLine = new THREE.Line(lineGeo, lineMat);
+            scene.add(guideLine);
+
+            spawnFlames();
+            setupMobileControls();
+            animate();
+        }
+
+        function spawnFlames() {
+            for(let i=0; i<5; i++) {
+                const geo = new THREE.OctahedronGeometry(0.7, 0); // Ligeramente más grandes
+                // CORRECCIÓN DIAMANTES: Mucho más brillantes y celestes
+                const mat = new THREE.MeshPhongMaterial({ 
+                    color: 0x00ffff, 
+                    emissive: 0x00ffff, // Brillo propio
+                    emissiveIntensity: 1.5,
+                    shininess: 100 
+                });
+                const flame = new THREE.Mesh(geo, mat);
+                // Distribución para que no queden muy lejos
+                flame.position.set((Math.random()-0.5)*30, (Math.random()-0.5)*30, (Math.random()-0.5)*15);
+                scene.add(flame);
+                flames.push(flame);
+            }
+        }
+
+        function setupMobileControls() {
+            const base = document.getElementById('joystick-base');
+            const stick = document.getElementById('joystick-stick');
+
+            const handleTouch = (e) => {
+                e.preventDefault();
+                const touch = e.touches[0];
+                const rect = base.getBoundingClientRect();
+                const centerX = rect.left + rect.width/2;
+                const centerY = rect.top + rect.height/2;
+                
+                let dx = touch.clientX - centerX;
+                let dy = touch.clientY - centerY;
+                const dist = Math.min(Math.sqrt(dx*dx + dy*dy), 40);
+                const angle = Math.atan2(dy, dx);
+
+                moveX = Math.cos(angle) * (dist/40);
+                moveY = Math.sin(angle) * (dist/40);
+                
+                stick.style.left = (30 + moveX * 30) + "px";
+                stick.style.top = (30 + moveY * 30) + "px";
+            };
+
+            base.addEventListener('touchmove', handleTouch, { passive: false });
+            base.addEventListener('touchend', () => {
+                moveX = 0; moveY = 0;
+                stick.style.left = "30px"; stick.style.top = "30px";
+            });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if(heart) {
+                heart.position.x += moveX * speed;
+                heart.position.y -= moveY * speed;
+                // Efecto Latido suave
+                const s = 0.04 + Math.sin(Date.now() * 0.005) * 0.003;
+                heart.scale.set(s, s, s);
+                heart.rotation.y += 0.015;
+
+                // Cámara sigue al corazón
+                camera.position.lerp(new THREE.Vector3(heart.position.x, heart.position.y, 18), 0.1);
+            }
+
+            // Actualizar Guía al diamante más cercano
+            if(flames.length > 0) {
+                let closest = flames[0];
+                let minDist = heart.position.distanceTo(closest.position);
+                flames.forEach(f => {
+                    if(heart.position.distanceTo(f.position) < minDist) {
+                        minDist = heart.position.distanceTo(f.position);
+                        closest = f;
+                    }
+                });
+                // Actualizar puntos de la línea guía
+                const points = [heart.position.clone(), closest.position.clone()];
+                guideLine.geometry.setFromPoints(points);
+                guideLine.visible = true;
+            } else {
+                guideLine.visible = false;
+            }
+
+            // Colisiones precisas
+            for(let i = flames.length - 1; i >= 0; i--) {
+                const f = flames[i];
+                f.rotation.x += 0.02;
+                // Área de colisión ajustada
+                if(heart.position.distanceTo(f.position) < 1.8) {
+                    scene.remove(f);
+                    flames.splice(i, 1);
+                    score++;
+                    // Vibración hápitca
+                    if(navigator.vibrate) navigator.vibrate([100, 50, 100]); 
+                    document.getElementById('objective').innerText = `Diamantes: ${score} / 5`;
+                    if(score >= 5) {
+                        document.getElementById('objective').innerText = "¡REINO 1 COMPLETADO! ❤️";
+                        document.getElementById('guide-msg').innerText = "Tu devoción ha iluminado este mundo.";
+                        document.getElementById('guide-msg').style.color = "#00ff00";
+                    }
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        document.getElementById('start-btn').addEventListener('click', () => {
+            document.getElementById('intro-screen').style.display = 'none';
+            document.getElementById('hud').style.opacity = '1';
+            document.getElementById('controls').style.opacity = '1';
+            // Petición para pantalla completa en móviles
+            if (document.documentElement.requestFullscreen) {
+                document.documentElement.requestFullscreen();
+            }
+            init();
+        });
+
+        window.addEventListener('resize', () => {
+            if(camera && renderer) {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+        });
+    </script>
+</body>
+</html>
